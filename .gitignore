@@ -1,0 +1,5 @@
+main
+main.o
+compile_commands.json
+compile_flags.txt
+.cache/*
