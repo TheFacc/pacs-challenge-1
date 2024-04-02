@@ -1,0 +1,20 @@
+- The README.md file is detailed and accurate. Nice job!
+
+You have only one commit: you dind't really use github.
+
+- Inside the Makefile it was missing the include path for the muParser.
+  How were you able to compile the code?
+
+
+The code is overall well written. The attention to details is remarkable. 
+
+- The addition on the input from terminal is very nice. However, why didn't you use GetPot or JSON?
+  GetPot allows you to both handle files and command line input.
+
+- Why are there return 1; commented in all the code? 
+
+- Why you don't have the main separated from the header files? I would have liked to see the optimization functions implemented in a header file. This would have also improved readability.
+
+- I don't like only only file... I would have preferred multiple classes. Would have been more clear
+
+Please don't leave commented lines of codes when delivering
