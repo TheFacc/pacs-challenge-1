@@ -78,22 +78,27 @@ class Matrix {
 public:
     // constructor
     Matrix(size_t r = 0, size_t c = 0);
+
     // getters
     size_t num_rows() const { return rows; }
     size_t num_cols() const { return cols; }
+
     // access/set operators
     T operator()(size_t i, size_t j) const;
     T& operator()(size_t i, size_t j);
+
     // methods
-    void resize(size_t nrows, size_t ncols);
     void compress();
     void uncompress();
     bool is_compressed() const { return compressed; }
+    void resize(size_t nrows, size_t ncols);
+
+    void erase(size_t i, size_t j);
+    bool contains(size_t i, size_t j) const;
+    void clear();
+
     void print() const; // Print the matrix
     void printBones() const; // Print the active data structure
-
-private:
-    void clear();
 };
 
 
@@ -142,10 +147,18 @@ private:
     T& Matrix<T,Order>::operator()(size_t i, size_t j) {
         if (i >= rows || j >= cols)
             throw std::out_of_range("Matrix indices are out of bounds.");
-        if (compressed) //TODO allow edit for existing non-zero elements
-            throw std::logic_error("Modification not allowed in compressed state.");
+        if (compressed){
+            // Allow modification only if the element exists in compressed format
+            size_t out_idx = (Order == StorageOrder::RowMajor) ? i : j;
+            size_t in_idx = (Order == StorageOrder::RowMajor) ? j : i;
+            size_t start = outer[out_idx];
+            size_t end = outer[out_idx + 1];
+            for (size_t k = start; k < end; ++k)
+                if (inner[k] == in_idx)
+                    return values[k]; // Return reference to the existing non-zero element
 
-        // TODO If the element to set is zero, remove it from the map instead... how
+            throw std::logic_error("Adding new elements in compressed state is not allowed.");
+        }
 
         return data[{i, j}];
     }
@@ -263,7 +276,21 @@ private:
         compressed = false;        
     }
 
-    // clear
+    // erase, contains, clear
+    template<typename T, StorageOrder Order>
+    void Matrix<T,Order>::erase(size_t i, size_t j) {
+        // remove an element
+        if (i >= rows || j >= cols)
+            throw std::out_of_range("Cannot erase element: indices are out of bounds.");
+        if (compressed)
+            throw std::logic_error("Cannot erase elements in compressed state.");
+        data.erase({i, j});
+    }
+    template<typename T, StorageOrder Order>
+    bool Matrix<T,Order>::contains(size_t i, size_t j) const {
+        // check the presence of an element
+        return data.find({i, j}) != data.end();
+    }
     template<typename T, StorageOrder Order>
     void Matrix<T,Order>::clear() {
         data.clear();
@@ -289,15 +316,15 @@ private:
         std::cout << "Matrix bones: sz=(" << rows << ", " << cols 
                   << ") - The matrix is " << (compressed ? "compressed" : "not compressed") << "\n";
         if (compressed) {
-            std::cout << " - Values: ";
+            std::cout << " --Values: ";
             for (const auto& value : values)
                 std::cout << value << " ";
 
-            std::cout << "\n - Inner indices: (" << (Order==StorageOrder::RowMajor ? "Rows" : "Cols") << " starting indices) ";
+            std::cout << "\n --Inner indices: (" << (Order==StorageOrder::RowMajor ? "Rows" : "Cols") << " starting indices) ";
             for (const auto& index : outer)
                 std::cout << index << " ";
 
-            std::cout << "\n - Outer indices: (" << (Order==StorageOrder::RowMajor ? "Cols" : "Rows") << " indices) ";
+            std::cout << "\n --Outer indices: (" << (Order==StorageOrder::RowMajor ? "Cols" : "Rows") << " indices) ";
             for (const auto& ptr : inner)
                 std::cout << ptr << " ";
 
