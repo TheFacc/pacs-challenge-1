@@ -110,9 +110,6 @@ int main() {
         matR.resize(4, 4);  matC.resize(4, 4);
         matR(3,3) = .1;     matC(3,3) = .1;
         matR.print();
-        // std::cout << "\nVector: ";
-        // for (double val : vec) std::cout << val << " ";
-        // std::cout << std::endl << std::endl;
         
         // Perform multiplication in uncompressed state
         auto result_uncompressedR = matR * vec;
@@ -133,6 +130,18 @@ int main() {
         std::cout << "Error: " << e.what() << std::endl;
     }
 
+
+
+    // norm tests
+    std::cout << "\n\n ** NORM TESTS **" << std::endl;
+    matC.print();
+    std::cout << " - 1-norm: " << matC.norm<algebra::NormType::One>() << std::endl;
+    std::cout << " - Inf norm: " << matC.norm<algebra::NormType::Infinity>() << std::endl;
+    std::cout << " - Frobenius norm: " << matC.norm<algebra::NormType::Frobenius>() << std::endl;
+    matR.print();
+    std::cout << " - 1-norm: " << matR.norm<algebra::NormType::One>() << std::endl;
+    std::cout << " - Inf norm: " << matR.norm<algebra::NormType::Infinity>() << std::endl;
+    std::cout << " - Frobenius norm: " << matR.norm<algebra::NormType::Frobenius>() << std::endl;
 
 
     // read matrix from file (mtx format)(RowMajor)
@@ -158,6 +167,7 @@ int main() {
     timeMultiplication(mtxC, vecr, "ColumnMajor uncompressed"); // uncompressed
     mtxC.compress();
     timeMultiplication(mtxC, vecr, "ColumnMajor compressed"); // compressed
+
 
     return 0;
 }

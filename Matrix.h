@@ -10,11 +10,13 @@
 #include <fstream>
 #include <sstream>
 #include <complex>
+#include <cmath> // for std::abs and std::sqrt
 
 
 namespace algebra {
 
 enum class StorageOrder { RowMajor, ColumnMajor };
+enum class NormType { One, Infinity, Frobenius };
 
 // Forward declaration of the Matrix class
 template<typename T, StorageOrder Order>
@@ -148,12 +150,20 @@ public:
     bool is_compressed() const { return compressed; }
     void resize(size_t nrows, size_t ncols);
 
+    template<NormType type>
+    T norm() const;
+
     void erase(size_t i, size_t j);
     bool contains(size_t i, size_t j) const;
     void clear();
 
     void print() const; // Print the matrix
     void printBones() const; // Print the active data structure
+
+private:
+    T oneNorm() const;
+    T infinityNorm() const;
+    T frobeniusNorm() const;
 };
 
 
@@ -379,13 +389,14 @@ public:
         compressed = false;
     }
 
+
     // prints
     template<typename T, StorageOrder Order>
     void Matrix<T, Order>::print() const {
         std::cout << "Matrix (" << rows << "x" << cols << "): (" 
                   << (Order == StorageOrder::RowMajor ? "RowMajor" : "ColumnMajor") << ", " 
                   << (compressed ? "compressed" : "not compressed") << ")\n";
-        // just use access operator :)
+        // just use access operator for simple printing :)
         for (std::size_t i = 0; i < rows; ++i) {
             for (std::size_t j = 0; j < cols; ++j)
                 std::cout << (*this)(i, j) << " \t";
@@ -418,6 +429,82 @@ public:
     }
 
 
+    // norm
+    template<typename T, StorageOrder Order>
+    template<NormType type>
+    T Matrix<T,Order>::norm() const {
+        if constexpr (type == NormType::One)
+            return oneNorm();
+        else if constexpr (type == NormType::Infinity)
+            return infinityNorm();
+        else if constexpr (type == NormType::Frobenius)
+            return frobeniusNorm();
+        else
+            throw std::invalid_argument("Invalid norm type.");
+    }
+    template<typename T, StorageOrder Order>
+    T Matrix<T,Order>::oneNorm() const {
+        // we store col sums, and return the max
+        std::vector<T> columnSums(cols, T{});
+        if (compressed) {
+            if constexpr (Order == StorageOrder::RowMajor) {
+                // For CSR: traverse...
+                for (size_t i = 0; i < rows; ++i) {
+                    size_t start = inner[i], end = inner[i + 1];
+                    for (size_t pos = start; pos < end; ++pos)
+                        columnSums[outer[pos]] += std::abs(values[pos]);
+                }
+            } else {
+                // For CSC: directly calculate since it's the natural order in this case
+                for (size_t j = 0; j < cols; ++j) 
+                    for (size_t i = inner[j]; i < inner[j + 1]; ++i)
+                        columnSums[j] += std::abs(values[i]);
+            }
+        } else {
+            // Uncompressed: just get through the data
+            for (const auto& entry : data)
+                columnSums[entry.first[1]] += std::abs(entry.second);
+        }
+        return *std::max_element(columnSums.begin(), columnSums.end());
+    }
+    template<typename T, StorageOrder Order>
+    T Matrix<T,Order>::infinityNorm() const {
+        // we store row sums, and return the max
+        std::vector<T> rowSums(rows, T{});
+        if (compressed) {
+            if constexpr (Order == StorageOrder::RowMajor) {
+                // For CSR: directly calculate since it's the natural order for infinity norm in CSR
+                for (size_t i = 0; i < rows; ++i)
+                    for (size_t pos = inner[i]; pos < inner[i + 1]; ++pos)
+                        rowSums[i] += std::abs(values[pos]);
+            } else {
+                // For CSC: traverse...
+                for (size_t j = 0; j < cols; ++j) {
+                    size_t start = inner[j], end = inner[j + 1];
+                    for (size_t pos = start; pos < end; ++pos)
+                        rowSums[outer[pos]] += std::abs(values[pos]);
+                }
+            }
+        } else {
+            for (const auto& entry : data)
+                rowSums[entry.first[0]] += std::abs(entry.second);
+        }
+        return *std::max_element(rowSums.begin(), rowSums.end());
+    }
+    template<typename T, StorageOrder Order>
+    T Matrix<T,Order>::frobeniusNorm() const {
+        // sum of squares of all elements
+        // std::norm returns the squared magnitude of the complex number
+        T sum = T{};
+        if (compressed) {
+            for (const T& value : values)
+                sum += std::norm(value);
+        } else {
+            for (const auto& entry : data)
+                sum += std::norm(entry.second);
+        }
+        return std::sqrt(sum);
+    }
 } // namespace algebra
 
 #endif // MATRIX_H
