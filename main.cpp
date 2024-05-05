@@ -98,16 +98,21 @@ int main() {
     matC.printBones();
     matC.uncompress();
 
+
+
     // A*v test
     std::cout << "\n\n ** MATRIX-VECTOR MULTIPLICATION TEST **" << std::endl;
-    std::vector<double> vec = {1, 2, 0, 5};
+    // std::vector<double> vec = {1, 2, 0, 5};
+    algebra::Matrix<double, algebra::StorageOrder::ColumnMajor> vec(4, 1);
+    vec(0, 0)=1; vec(1, 0)=2; vec(2, 0)=0; vec(3, 0)=5;
+    vec.print();
     try {
         matR.resize(4, 4);  matC.resize(4, 4);
         matR(3,3) = .1;     matC(3,3) = .1;
         matR.print();
-        std::cout << "\nVector: ";
-        for (double val : vec) std::cout << val << " ";
-        std::cout << std::endl << std::endl;
+        // std::cout << "\nVector: ";
+        // for (double val : vec) std::cout << val << " ";
+        // std::cout << std::endl << std::endl;
         
         // Perform multiplication in uncompressed state
         auto result_uncompressedR = matR * vec;
@@ -127,6 +132,8 @@ int main() {
     } catch (const std::exception& e) {
         std::cout << "Error: " << e.what() << std::endl;
     }
+
+
 
     // read matrix from file (mtx format)(RowMajor)
     std::cout << "\n\n ** MTX FILE TESTS **" << std::endl;

@@ -55,6 +55,19 @@ std::vector<T> operator*(const Matrix<T, Order>& A, const std::vector<T>& v) {
 
     return result;
 }
+template<typename T, StorageOrder Order1, StorageOrder Order2>
+std::vector<T> operator*(const Matrix<T, Order1>& A, const Matrix<T, Order2>& v) {
+    // Ensure the second matrix is a vector-like matrix (one column)
+    if (v.num_cols() != 1)
+        throw std::invalid_argument("Second operand is not a vector (must have exactly one column).");
+
+    // 'convert' the vector-like matrix to a vector, and use it for multiplication
+    std::vector<T> vec(v.num_rows());
+    for (size_t i = 0; i < v.num_rows(); ++i)
+        vec[i] = v(i, 0);  // Copy each element from the matrix to the vector
+
+    return A * vec;
+}
 
 template<typename T, StorageOrder Order>
 void readMTX(Matrix<T, Order>& matrix, const std::string& filename) {
@@ -114,6 +127,7 @@ class Matrix {
     std::vector<size_t> inner; // Row(CSR) or column(CSC) pointers
 
     friend std::vector<T> operator*<>(const Matrix<T, Order>& A, const std::vector<T>& v);
+    friend std::vector<T> operator*<>(const Matrix<T, Order>& A, const Matrix<T, Order>& v);
     friend void readMTX<>(Matrix<T, Order>&, const std::string&);
 
 public:
