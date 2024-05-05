@@ -7,6 +7,9 @@
 #include <vector>
 #include <complex>
 #include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <complex>
 
 
 namespace algebra {
@@ -28,25 +31,20 @@ std::vector<T> operator*(const Matrix<T, Order>& A, const std::vector<T>& v) {
     std::vector<T> result(A.num_rows(), T{});  // Initialize the result vector with zeros as suggested
 
     if (A.is_compressed()) {
-        if (Order == StorageOrder::RowMajor) {
-            // Compressed Sparse Row (CSR) multiplication
-            for (size_t i = 0; i < A.num_rows(); ++i) {
-                for (size_t j = A.inner[i]; j < A.inner[i + 1]; ++j) {
-                    size_t col = A.outer[j];
-                    result[i] += A.values[j] * v[col];
-                }
-            }
+        if constexpr (Order == StorageOrder::RowMajor) {
+            // CSR multiplication
+            for (size_t i = 0; i < A.num_rows(); ++i) // row i
+                for (size_t j = A.inner[i]; j < A.inner[i + 1]; ++j) // non-zero elements in row i
+                    result[i] += A.values[j] * v[A.outer[j]];
         } else {
-            // Compressed Sparse Column (CSC) multiplication
-            for (size_t col = 0; col < A.num_cols(); ++col) {
-                T vj = v[col];
-                if (vj != T{})
-                    for (size_t idx = A.inner[col]; idx < A.inner[col + 1]; ++idx)
-                        result[A.outer[idx]] += A.values[idx] * vj;
-            }
+            // CSC multiplication
+            auto valit = A.values.begin();
+            for (size_t j = 0; j < A.num_cols(); ++j) // column j
+                for (size_t i = A.inner[j]; i < A.inner[j + 1]; ++i) // non-zero elements in column j
+                    result[A.outer[i]] += *(valit++) * v[j];
         }
     } else {
-        // Uncompressed state multiplication
+        // Uncompressed state multiplication: gradually add in place as suggested
         for (const auto& entry : A.data) {
             const auto& indices = entry.first;
             size_t i = indices[0];
@@ -56,6 +54,48 @@ std::vector<T> operator*(const Matrix<T, Order>& A, const std::vector<T>& v) {
     }
 
     return result;
+}
+
+template<typename T, StorageOrder Order>
+void readMTX(Matrix<T, Order>& matrix, const std::string& filename) {
+    // Read a matrix from a Matrix Market file (.mtx) - example:
+    // %%MatrixMarket matrix coordinate real general
+    // % Rows Columns Entries
+    // 131 131 536
+    // 1 1  1.0000000000000e+00
+    // 9 1 -6.3869481600000e+00
+    // 131 1  6.3554020600000e-02
+    // ...
+
+    std::ifstream file(filename);
+    if (!file.is_open())
+        throw std::runtime_error("Failed to open file: " + filename);
+
+    std::string line;
+    bool header_passed = false;
+    size_t rows, cols, entries;
+
+    while (getline(file, line)) {
+        if (line[0] == '%') // Comment line
+            continue;
+
+        if (!header_passed) {
+            std::istringstream iss(line);
+            if (!(iss >> rows >> cols >> entries))
+                throw std::runtime_error("Invalid Matrix Market header.");
+            matrix.resize(rows, cols);
+            header_passed = true;
+        } else {
+            std::istringstream iss(line);
+            size_t row, col;
+            T value;
+            if (!(iss >> row >> col >> value))
+                throw std::runtime_error("Invalid data format.");
+            matrix(row-1, col-1) = value; // adjust indices to 0-based as it all should be
+        }
+    }
+
+    file.close();
 }
 
 // Matrix class definition
@@ -70,10 +110,11 @@ class Matrix {
     std::map<std::array<size_t, 2>, T> data; // Map of (row, col) -> value
     // - For compressed storage
     std::vector<T> values; // Non-zero values
-    std::vector<size_t> inner; // Row or column pointers
-    std::vector<size_t> outer; // Column or row indices
+    std::vector<size_t> outer; // Column(CSR) or row(CSC) indices
+    std::vector<size_t> inner; // Row(CSR) or column(CSC) pointers
 
     friend std::vector<T> operator*<>(const Matrix<T, Order>& A, const std::vector<T>& v);
+    friend void readMTX<>(Matrix<T, Order>&, const std::string&);
 
 public:
     // constructor
@@ -117,7 +158,7 @@ public:
             throw std::out_of_range("Matrix indices are out of bounds.");
 
         if (compressed) {
-            if (Order == StorageOrder::RowMajor) {
+            if constexpr (Order == StorageOrder::RowMajor) {
                 // Search in CSR format
                 size_t start = inner[i];
                 size_t end = inner[i + 1];
@@ -166,18 +207,42 @@ public:
     // resize
     template<typename T, StorageOrder Order>
     void Matrix<T,Order>::resize(size_t r, size_t c) {
-        // I decided to only allow resizing for uncompressed matrices (not very clear directions - maybe I should decmpress first?)
-        // Also I decided to throw an exception if any existing elements would become out of bounds, instead of cutting them off
-        // TODO improve
-        if (compressed)
-            throw std::logic_error("Resize not allowed in compressed state.");
-        
-        // Check if any existing elements would become out of bounds
-        for (const auto& val : data) {
-            size_t row = val.first[0];
-            size_t col = val.first[1];
-            if (row >= r || col >= c)
-                throw std::logic_error("Resize would result in out of bounds element: (" + std::to_string(row) + ", " + std::to_string(col) + ")");
+        // I decided to throw an exception if any existing elements would become out of bounds, instead of cutting them off
+        // this means simply check for oob elements, if we arrive at the end simply update rows and cols (and cut inner if compressed)
+        // works both for compressed and uncompressed states
+        if (compressed){
+            if constexpr (Order == StorageOrder::RowMajor) {
+                for (size_t i = 0; i < rows; i++) {
+                    for (size_t pos = inner[i]; pos < inner[i + 1]; pos++) {
+                        size_t col = outer[pos];
+                        if (col >= c)
+                            throw std::logic_error("Resize would result in out of bounds element: (" + std::to_string(i) + ", " + std::to_string(col) + ")");
+                    }
+                }
+                // cut inner
+                if (r < rows)
+                    inner.resize(r + 1);
+            }
+            else {
+                for (size_t i = 0; i < cols; i++) {
+                    for (size_t pos = inner[i]; pos < inner[i + 1]; pos++) {
+                        size_t row = outer[pos];
+                        if (row >= r)
+                            throw std::logic_error("Resize would result in out of bounds element: (" + std::to_string(row) + ", " + std::to_string(i) + ")");
+                    }
+                }
+                // cut inner
+                if (c < cols)
+                    inner.resize(c + 1);
+            }
+        } else {
+            // uncompressed
+            for (const auto& val : data) {
+                size_t row = val.first[0];
+                size_t col = val.first[1];
+                if (row >= r || col >= c)
+                    throw std::logic_error("Resize would result in out of bounds element: (" + std::to_string(row) + ", " + std::to_string(col) + ")");
+            }
         }
 
         rows = r;
@@ -191,7 +256,7 @@ public:
         if (compressed)
             throw std::logic_error("Matrix is already compressed.");
 
-        if (Order == StorageOrder::RowMajor) {
+        if constexpr (Order == StorageOrder::RowMajor) {
             // Compress into CSR format
             inner.resize(rows + 1, 0);
             
@@ -249,7 +314,7 @@ public:
 
         data.clear(); // just making sure
 
-        if (Order == StorageOrder::RowMajor) {
+        if constexpr (Order == StorageOrder::RowMajor) {
             // Decompress from CSR format
             for (size_t i = 0; i < rows; i++) {
                 for (size_t pos = inner[i]; pos < inner[i + 1]; pos++) {
@@ -303,7 +368,9 @@ public:
     // prints
     template<typename T, StorageOrder Order>
     void Matrix<T, Order>::print() const {
-        std::cout << "Matrix (" << rows << "x" << cols << "):\n";
+        std::cout << "Matrix (" << rows << "x" << cols << "): (" 
+                  << (Order == StorageOrder::RowMajor ? "RowMajor" : "ColumnMajor") << ", " 
+                  << (compressed ? "compressed" : "not compressed") << ")\n";
         // just use access operator :)
         for (std::size_t i = 0; i < rows; ++i) {
             for (std::size_t j = 0; j < cols; ++j)
@@ -313,8 +380,9 @@ public:
     }
     template<typename T, StorageOrder Order>
     void Matrix<T, Order>::printBones() const {
-        std::cout << "Matrix bones: sz=(" << rows << ", " << cols 
-                  << ") - The matrix is " << (compressed ? "compressed" : "not compressed") << "\n";
+        std::cout << "Matrix (" << rows << "x" << cols << ") bones: (" 
+                  << (Order == StorageOrder::RowMajor ? "RowMajor" : "ColumnMajor") << ", "
+                  << (compressed ? "compressed" : "not compressed") << ")\n";
         if (compressed) {
             std::cout << " --Values: ";
             for (const auto& value : values)
