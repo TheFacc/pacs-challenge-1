@@ -12,6 +12,20 @@ void timeMultiplication(algebra::Matrix<T, Order>& mat, std::vector<T>& vec, con
 }
 
 int main() {
+
+    std::cout << "test with complex variables" << std::endl;
+    algebra::Matrix<std::complex<double>, algebra::StorageOrder::RowMajor> matComplex(2,2);
+    matComplex(0,0) = {1,0};
+    matComplex(1,1) = {0,1};
+
+    matComplex.print();
+    matComplex.printBones();
+    
+    std::vector<std::complex<double>> vComplex = {{1,0},{0,1}};
+    auto xComplex = matComplex*vComplex;
+    for (std::complex<double> val : xComplex) std::cout << val << " "; std::cout << "\n";
+   
+
     std::cout << "  ** PACS Challenge 2 - A Sparse Matrix **  " << std::endl << std::endl;
     // basic tests
     algebra::Matrix<double, algebra::StorageOrder::RowMajor> matR(4, 4);

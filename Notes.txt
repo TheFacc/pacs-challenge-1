@@ -1,0 +1,11 @@
+- README contains very clear and complete instructions
+- the code is well commented and organized
+
+- no test with complex variables
+
+- no speedup with compression
+
+- operator* for A*v when v is a matrix: not very efficient to copy the matrix in a vector when it has a big size.
+- the matrix-vector multiplication, at least in the case where v is a matrix of one column, should return a matrix.
+
+- the method norm could have been template with respect to norm choice
